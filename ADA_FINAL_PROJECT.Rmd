@@ -1,0 +1,459 @@
+---
+title: "MY_ADA"
+author: "Nusrat"
+date: "2025-11-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+getwd()
+```
+```{r}
+install.packages("janitor")
+install.packages("gt")
+
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library (ggplot2)
+```
+```{r}
+ADA_clean <- ADA_clean%>% select(SEQN,DPQ020, DIQ010, RIDAGEYR, RIAGENDR, RIDRETH3)
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  select(SEQN, DPQ020, DIQ010, RIDAGEYR, RIAGENDR, RIDRETH3) %>%
+  mutate(
+    diabetes = case_when(
+      DIQ010 == 1 ~ 1,    
+      DIQ010 == 2 ~ 0,              
+      DIQ010 %in% c(3, 7, 9) ~ NA_real_,
+      TRUE ~ NA_real_               
+    ),
+    diabetes_f = factor(
+      diabetes,
+      levels = c(0, 1),
+      labels = c("No", "Yes")
+    )
+  )
+
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    depress01 = case_when(
+      DPQ020 == 0 ~ 0,          
+      DPQ020 %in% c(1, 2, 3) ~ 1,        
+      TRUE ~ NA_real_                  
+    ),
+    depress_f = factor(
+      depress01,
+      levels = c(0, 1),
+      labels = c("No depression", "Depression")
+    )
+  )
+
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    gender = case_when(
+      RIAGENDR == 1 ~ "Male",
+      RIAGENDR == 2 ~ "Female",
+      TRUE ~ NA_character_
+    ),
+    gender = factor(gender, levels = c("Male", "Female"))
+  )
+
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    race3 = case_when(
+      RIDRETH3 == 3 ~ "White",
+      RIDRETH3 == 4 ~ "Black",
+      TRUE ~ "Other"
+    ),
+    race3 = factor(race3, levels = c("White", "Black", "Other"))
+  )
+
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    age = as.numeric(RIDAGEYR)
+  )
+
+`
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    depress01 = case_when(
+      DPQ020 == 0 ~ 0,
+      DPQ020 %in% c(1,2,3) ~ 1,
+      TRUE ~ NA_real_
+    ),
+    depress_f = factor(depress01,
+                       levels = c(0,1),
+                       labels = c("No depression","Depression"))
+  )
+
+```
+
+
+
+```{r}
+
+ADA_clean <- ADA_clean %>% drop_na(depress01, diabetes, age, gender, race3)
+```
+```{r}
+model_dep_diab <- glm(
+  diabetes ~ depress01,
+  data = ADA_clean,
+  family = binomial
+)
+
+```
+```{r}
+summary(model_dep_diab)
+
+```
+```{r}
+exp(coef(model_dep_diab))
+
+```
+```{r}
+exp(confint(model_dep_diab))
+
+```
+```{r}
+exp(confint.default(model_dep_diab))
+
+```
+```{r}
+model_adj <- glm(
+  diabetes ~ depress01 + age + gender + race3,
+  data = ADA_clean,
+  family = binomial
+)
+
+```
+```{r}
+summary(model_dep_diab)
+
+```
+```{r}
+exp(0.14635)
+
+```
+
+```{r}
+library(ggplot2)
+
+ADA_clean %>%
+  group_by(depress_f, diabetes_f) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(x = depress_f, y = n, fill = diabetes_f)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Depression Status", y = "Proportion", fill = "Diabetes",
+       title = "Proportion of Diabetes by Depression Status") +
+  theme_minimal()
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  labs(x = "Depression Status", y = "Count",
+       title = "Counts of Diabetes by Depression Status") +
+  theme_minimal()
+```
+
+
+
+```{r}
+library(broom)
+
+model_dep_diab %>%
+  tidy(conf.int = TRUE, exponentiate = TRUE) %>%
+  ggplot(aes(x = term, y = estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_pointrange() +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "Odds Ratio for Diabetes by Depression Status",
+       x = "Predictor", y = "Odds Ratio") +
+  theme_minimal()
+
+```
+
+```{r}
+library(dplyr)    
+library(broom)    
+library(knitr)    
+
+```
+```{r}
+model2 <- glm(diabetes ~ depress01 + age + gender + race3,
+              data = ADA_clean,
+              family = binomial)
+```
+```{r}
+results_table <- model2 %>%
+  tidy(conf.int = TRUE, exponentiate = TRUE) %>%
+  mutate(
+    OR = round(estimate, 2),
+    CI = paste0("(", round(conf.low, 2), ", ", round(conf.high, 2), ")"),
+    p_value = round(p.value, 4)
+  ) %>%
+  select(term, OR, CI, p_value)
+```
+```{r}
+knitr::kable(
+  results_table,
+  caption = "Odds Ratios, 95% Confidence Intervals, and p-values"
+)
+```
+
+```{r}
+plot_data <- ADA_clean %>%
+  group_by(depress_f) %>%
+  summarise(
+    n = n(),
+    prop_diab = mean(diabetes == 1, na.rm = TRUE)  # proportion with diabetes
+  )
+
+plot_data
+
+```
+```{r}
+ggplot(plot_data, aes(x = depress_f, y = prop_diab)) +
+  geom_col() +
+  ylim(0, 1) +
+  labs(
+    x = "Depressive symptoms",
+    y = "Proportion with diabetes",
+    title = "Proportion of participants with diabetes by depression status"
+  )
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+
+plot_data <- ADA_clean %>%
+  group_by(depress_f) %>%
+  summarise(
+    n = n(),
+    pct_diab = 100 * mean(diabetes == 1, na.rm = TRUE)
+  )
+plot_data
+
+```
+```{r}
+ggplot(plot_data, aes(x = depress_f, y = pct_diab, fill = depress_f)) +
+  geom_col(width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = paste0(round(pct_diab, 1), "%")),
+            vjust = -0.5, size = 4) +
+  scale_y_continuous(
+    limits = c(0, max(plot_data$pct_diab) * 1.25),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    x = "Depressive symptoms",
+    y = "Percent with diabetes",
+    title = "Percent of participants with diabetes by depression status"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "fill") +      # stacked to 100%
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Percent with Diabetes by Depression Status",
+    x = "Depression status",
+    y = "Percent",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title  = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+library(ggplot2)
+
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +     # side-by-side bars
+  labs(
+    title = "Counts of Diabetes by Depression Status",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title  = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ gender) +
+  labs(
+    title = "Diabetes by Depression Status, Stratified by Gender",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ race3) +
+  labs(
+    title = "Diabetes by Depression Status, Stratified by Race",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+ADA_clean <- ADA_clean %>%
+  mutate(
+    age_group = case_when(
+      age < 40 ~ "<40",
+      age >= 40 & age < 60 ~ "40–59",
+      age >= 60 ~ "60+"
+    ),
+    age_group = factor(age_group, levels = c("<40","40–59","60+"))
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ age_group) +
+  labs(
+    title = "Diabetes by Depression Status Across Age Groups",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_grid(gender ~ race3) +
+  labs(
+    title = "Diabetes by Depression Across Gender and Race",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+
+ADA_clean <- ADA_clean %>%
+  mutate(
+    age_group = case_when(
+      age < 40 ~ "<40",
+      age >= 40 & age < 60 ~ "40–59",
+      age >= 60 ~ "60+"
+    ),
+    age_group = factor(age_group, levels = c("<40", "40–59", "60+"))
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ race3) +
+  labs(
+    title = "Counts of Diabetes by Depression Status and Race",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title  = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+ggplot(ADA_clean, aes(x = depress_f, fill = diabetes_f)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ age_group) +
+  labs(
+    title = "Counts of Diabetes by Depression Status and Age Group",
+    x = "Depression status",
+    y = "Count",
+    fill = "Diabetes"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title  = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+```
+```{r}
+write.csv(ADA_clean, "ADA_clean.csv", row.names = FALSE)
+
+```
+
